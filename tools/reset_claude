@@ -1,0 +1,21 @@
+#!/bin/bash
+# Reset Claude Code running in tmux session "claude"
+
+SESSION="claude"
+
+# Check if session exists
+if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+	echo "Tmux session '$SESSION' not found. Starting new session..."
+	tmux new-session -d -s "$SESSION"
+fi
+
+sleep 5
+# Send Ctrl+C to interrupt current process, then clear and restart
+tmux send-keys -t "$SESSION" C-c ENTER
+sleep 0.3
+tmux send-keys -t "$SESSION" C-c ENTER
+sleep 0.5
+tmux send-keys -t "$SESSION" "claude --channels plugin:telegram@claude-plugins-official" ENTER
+
+# Attach to the session
+tmux attach-session -t "$SESSION"

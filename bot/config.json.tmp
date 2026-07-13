@@ -1,0 +1,8 @@
+{
+  "bot_token": "",
+  "allowed_users": [],
+  "allowed_groups": [],
+  "admin_users": [],
+  "command_timeout": 30,
+  "log_level": "INFO"
+}

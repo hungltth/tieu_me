@@ -1,0 +1,12 @@
+{
+  "bot_token": "8743904373:AAGDR0DsJQNZLBuX-WC7ZPTW-N_kRS9_74U",
+  "allowed_users": [
+    "407592381"
+  ],
+  "allowed_groups": [],
+  "admin_users": [
+    "407592381"
+  ],
+  "command_timeout": 30,
+  "log_level": "INFO"
+}

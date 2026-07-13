@@ -1,0 +1,51 @@
+#!/bin/bash
+
+PIDS=$(pgrep "claude" 2>/dev/null)
+
+if [ -z "$PIDS" ]; then
+	echo "Không tìm thấy process nào có tên claude."
+else
+	echo "Tìm thấy các process claude:"
+	echo "$PIDS" | while read pid; do
+		ps -p "$pid" -o pid,comm,args --no-headers 2>/dev/null
+	done
+
+	echo ""
+	echo "Đang kill..."
+	echo "$PIDS" | while read pid; do
+		kill -9 "$pid" 2>/dev/null && echo "Đã kill PID $pid" || echo "Không thể kill PID $pid"
+	done
+
+fi
+
+PIDS=$(pgrep "bun" 2>/dev/null)
+
+if [ -z "$PIDS" ]; then
+	echo "Không tìm thấy process nào có tên bun."
+else
+	echo "Tìm thấy các process claude:"
+	echo "$PIDS" | while read pid; do
+		ps -p "$pid" -o pid,comm,args --no-headers 2>/dev/null
+	done
+
+	echo ""
+	echo "Đang kill..."
+	echo "$PIDS" | while read pid; do
+		kill -9 "$pid" 2>/dev/null && echo "Đã kill PID $pid" || echo "Không thể kill PID $pid"
+	done
+
+fi
+
+SESSION="claude"
+# Check if session exists
+if ! tmux has-session -t "$SESSION" 2>/dev/null; then
+	echo "Tmux session '$SESSION' not found. Starting new session..."
+	tmux new-session -d -s "$SESSION"
+fi
+
+tmux send-keys -t "$SESSION" "cd /Users/hung/Projects/private/tieu_me" ENTER
+sleep 0.5
+
+tmux send-keys -t "$SESSION" "claude --channels plugin:telegram@claude-plugins-official" ENTER
+
+# tmux attach-session -t "$SESSION"

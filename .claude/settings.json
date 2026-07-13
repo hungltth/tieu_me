@@ -1,0 +1,31 @@
+{
+  "enabledPlugins": {
+    "telegram@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read",
+      "Edit",
+      "Write"
+    ],
+    "deny": [
+      "Read(/Users/hung/Projects/private/tieu_me/../**)",
+      "Edit(/Users/hung/Projects/private/tieu_me/../**)",
+      "Write(/Users/hung/Projects/private/tieu_me/../**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/hung/Projects/private/tieu_me/.claude/hooks/check_bash_path.py"
+          }
+        ]
+      }
+    ]
+  }
+}
