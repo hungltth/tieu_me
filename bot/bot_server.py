@@ -5,9 +5,12 @@ Bot Server - Telegram bot thực thi lệnh từ người dùng được phép.
 
 import json
 import logging
+import re
 import shlex
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from telegram import Update, BotCommand
@@ -21,6 +24,9 @@ from telegram.ext import (
 
 BASE_DIR = Path(__file__).parent
 CONFIG_FILE = BASE_DIR / "config.json"
+
+sys.path.insert(0, str(BASE_DIR.parent / "tools"))
+import check_font  # noqa: E402
 
 
 def load_config() -> dict:
@@ -121,6 +127,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*/check_log* - Chạy kiểm tra log hàng ngày",
         "*/primes <number>* - Tính số nguyên tố (ví dụ: /primes 100)",
         '*/tra_cuu <file> <keyword>* - Tra cứu trong file Excel (keyword có dấu cách dùng `"...")`',
+        "*/check_font <text>* - Kiểm tra unicode tổ hợp trong text (bôi đậm chữ lỗi)",
+        "*/check_font* + đính kèm file Excel - Quét và tô đỏ ô lỗi font, gửi lại file",
         "",
         "_Admin only:_",
         "*/add_user <user_id>* - Thêm user vào allowed list",
@@ -483,6 +491,83 @@ async def cmd_nguyento(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Có lỗi xảy ra: {str(e)}")
 
 
+async def _check_font_excel(update: Update, context: ContextTypes.DEFAULT_TYPE, document):
+    filename = document.file_name or "file.xlsx"
+    if not filename.lower().endswith((".xlsx", ".xlsm", ".xls")):
+        await update.message.reply_text("❌ File phải là Excel (.xlsx/.xlsm/.xls).")
+        return
+
+    await update.message.reply_text("⏳ Đang quét file Excel...")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="check_font_"))
+    try:
+        input_path = tmp_dir / filename
+        tg_file = await document.get_file()
+        await tg_file.download_to_drive(str(input_path))
+
+        output_path = tmp_dir / f"checked_{filename}"
+        try:
+            stats = check_font.check_excel_file(str(input_path), str(output_path))
+        except Exception as e:
+            await update.message.reply_text(f"❌ Lỗi khi xử lý file: {e}")
+            return
+
+        if stats["flagged_cells"] == 0:
+            await update.message.reply_text(
+                f"✅ Đã quét {stats['total_cells']} ô, không phát hiện unicode tổ hợp."
+            )
+            return
+
+        sheet_lines = "\n".join(f"  • {s}: {c} ô" for s, c in stats["sheets"].items())
+        with open(output_path, "rb") as f:
+            await update.message.reply_document(
+                document=f,
+                filename=f"checked_{filename}",
+                caption=(
+                    f"⚠️ Phát hiện {stats['flagged_cells']}/{stats['total_cells']} ô dùng unicode tổ hợp:\n"
+                    f"{sheet_lines}\n\nCác ô lỗi đã được tô nền đỏ."
+                ),
+            )
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+async def cmd_check_font(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        await deny(update)
+        return
+
+    message = update.message
+    document = message.document
+    if not document and message.reply_to_message:
+        document = message.reply_to_message.document
+
+    if document:
+        await _check_font_excel(update, context, document)
+        return
+
+    text = " ".join(context.args) if getattr(context, "args", None) else ""
+    if not text.strip():
+        await update.message.reply_text(
+            "📖 Cách dùng:\n"
+            "• Gửi kèm file Excel với caption `/check_font` (hoặc reply vào file) để quét và tô đỏ các ô lỗi font.\n"
+            "• Hoặc `/check_font <đoạn text>` để kiểm tra unicode tổ hợp trong text.",
+            parse_mode="Markdown",
+        )
+        return
+
+    if not check_font.has_font_error(text):
+        await update.message.reply_text("✅ Không phát hiện lỗi font trong đoạn text.")
+        return
+
+    header = check_font.escape_mdv2("⚠️ Phát hiện lỗi font (đã gạch dưới ký tự lỗi):\n\n")
+    underlined = check_font.underline_to_hop_chars(text)
+    await update.message.reply_text(
+        f"{header}{underlined}",
+        parse_mode="MarkdownV2",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Unknown message
 # ---------------------------------------------------------------------------
@@ -517,6 +602,7 @@ async def post_init(app: Application):
         BotCommand("list_allowed", "Xem danh sách allowed"),
         BotCommand("reset_claude_bot", "Reset Claude bot (admin only)"),
         BotCommand("tra_cuu", "Tra cứu trong file Excel"),
+        BotCommand("check_font", "Kiểm tra unicode tổ hợp (text hoặc file Excel)"),
     ]
     await app.bot.set_my_commands(commands)
     logger.info("Đã đăng ký %d commands với Telegram.", len(commands))
@@ -546,6 +632,13 @@ def main():
     app.add_handler(CommandHandler("list_allowed", cmd_list_allowed))
     app.add_handler(CommandHandler("reset_claude_bot", cmd_reset_claude_bot))
     app.add_handler(CommandHandler("tra_cuu", cmd_tra_cuu))
+    app.add_handler(CommandHandler("check_font", cmd_check_font))
+    app.add_handler(
+        MessageHandler(
+            filters.Document.ALL & filters.CaptionRegex(re.compile(r"^/check_font")),
+            cmd_check_font,
+        )
+    )
     app.add_handler(MessageHandler(filters.COMMAND, handle_unknown))
 
     logger.info("Bot server đang chạy...")
