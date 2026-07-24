@@ -32,3 +32,6 @@ htmlcov/
 venv/
 env/
 ENV/
+
+*/.DS_Store
+.DS_Store
